@@ -1,5 +1,11 @@
 package es.alvsanand.spark_recommender.parser
 
+import java.io._
+import java.net.URL
+
+import org.apache.commons.compress.archivers.zip.ZipFile
+import org.apache.commons.io.IOUtils
+
 /**
   * Created by alvsanand on 7/05/16.
   */
@@ -19,12 +25,12 @@ object DatasetDownloader {
     val file = new File(fileName)
     val finalDstDile = new File(finalDstName)
 
-    if(!finalDstDile.exists()){
-      if(!file.exists()){
+    if (!finalDstDile.exists() || finalDstDile.list().size == 0) {
+      if (!file.exists()) {
         println("Downloading Dataset file[%s] to %s".format(DATASET_URL, fileName))
 
-        var in = None: Option[InputStreamReader]
-        var out = None: Option[OutputStreamWriter]
+        var in = None: Option[InputStream]
+        var out = None: Option[OutputStream]
 
         try {
           val dstDir = new File(dst)
@@ -35,12 +41,10 @@ object DatasetDownloader {
 
           val dataset = new URL(DATASET_URL)
 
-          in = Some(new InputStreamReader(dataset.openStream()))
-          out = Some(new FileWriter(tmpFile))
-          var c = 0
-          while ({c = in.get.read; c != -1}) {
-            out.get.write(c)
-          }
+          in = Some(dataset.openStream())
+          out = Some(new FileOutputStream(tmpFile))
+
+          IOUtils.copy(in.get, out.get)
 
           tmpFile.renameTo(file)
 
@@ -50,7 +54,7 @@ object DatasetDownloader {
           if (out.isDefined) out.get.close
         }
       }
-      else{
+      else {
         println("Dataset file[%s] already downloaded to %s".format(DATASET_URL, fileName))
       }
 
@@ -60,46 +64,43 @@ object DatasetDownloader {
 
       println("Unzziped Dataset file[%s] to %s".format(fileName, finalDstName))
     }
-    else{
+    else {
       println("Dataset[%s] already exists in %s".format(DATASET_URL, finalDstName))
     }
   }
 
   @throws(classOf[IOException])
-  private def unzipFile(zipFile: String, outputFolder: String): Unit = {
+  private def unzipFile(zipFileName: String, outputFolder: String): Unit = {
     val buffer = new Array[Byte](1024)
 
+    val folder = new File(outputFolder)
+    if (!folder.exists()) {
+      folder.mkdir()
+    }
+
+    val zipFile = new ZipFile(zipFileName)
+
     try {
-      val folder = new File(outputFolder);
-      if (!folder.exists()) {
-        folder.mkdir();
-      }
+      val entries = zipFile.getEntries
 
-      val zis: ZipInputStream = new ZipInputStream(new FileInputStream(zipFile));
-      var ze: ZipEntry = zis.getNextEntry();
+      while (entries.hasMoreElements()) {
+        val entry = entries.nextElement()
+        val entryDestination = new File(folder, entry.getName())
 
-      while (ze != null) {
-        val fileName = ze.getName();
-        val newFile = new File(outputFolder + File.separator + fileName);
+        if (entry.isDirectory()) {
+          entryDestination.mkdirs()
+        } else {
+          entryDestination.getParentFile().mkdirs()
+          val in = zipFile.getInputStream(entry)
+          val out = new FileOutputStream(entryDestination)
 
-        new File(newFile.getParent()).mkdirs();
-
-        val fos = new FileOutputStream(newFile);
-
-        var len: Int = zis.read(buffer);
-
-        while (len > 0) {
-
-          fos.write(buffer, 0, len)
-          len = zis.read(buffer)
+          IOUtils.copy(in, out)
+          IOUtils.closeQuietly(in)
+          IOUtils.closeQuietly(out)
         }
-
-        fos.close()
-        ze = zis.getNextEntry()
       }
-
-      zis.closeEntry()
-      zis.close()
+    } finally {
+      zipFile.close()
     }
   }
 }
