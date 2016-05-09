@@ -28,6 +28,7 @@
         <scala.version>2.10.6</scala.version>
 
         <spark.version>1.6.1</spark.version>
+        <jblas.version>1.2.1</jblas.version>
         <spark-mongodb.version>0.11.1</spark-mongodb.version>
         <elasticsearch-hadoop.version>2.3.1</elasticsearch-hadoop.version>
         <scopt.version>3.4.0</scopt.version>
@@ -64,6 +65,12 @@
             <version>${spark.version}</version>
             <scope>compile</scope>
         </dependency>
+        <dependency>
+            <groupId>org.scalanlp</groupId>
+            <artifactId>jblas</artifactId>
+            <version>${jblas.version}</version>
+        </dependency>
+
 
         <dependency>
             <groupId>com.stratio.datasource</groupId>
