@@ -1,19 +1,18 @@
 package es.alvsanand.spark_recommender.parser
 
 import java.text.SimpleDateFormat
-import java.util.{Date, Locale}
+import java.util.Locale
 
 import com.mongodb.casbah.{WriteConcern => MongodbWriteConcern}
 import com.stratio.datasource.mongodb._
 import com.stratio.datasource.mongodb.config.MongodbConfig._
 import com.stratio.datasource.mongodb.config._
+import es.alvsanand.spark_recommender.utils.{ESConfig, MongoConfig}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.{Row, SQLContext}
 import org.apache.spark.{SparkConf, SparkContext}
-import org.apache.spark.sql.types.{StructType, _}
 
 import scala.collection.mutable
-import scala.collection.mutable.ArrayBuffer
 
 case class Review(reviewId: String, userId: String, productId: String, val title: String, overall: Option[Double], content: String, date: java.sql.Timestamp)
 
@@ -24,44 +23,40 @@ case class Product(productId: String, name: String, val price: String, features:
   */
 object ProductParser {
 
-  def storeData(dataset: String, mongoHosts: String, mongoDB: String, esHost: String, esIndex: String)(implicit _conf: SparkConf): Unit = {
+  def storeData(dataset: String)(implicit _conf: SparkConf, mongoConf: MongoConfig, esConf: ESConfig): Unit = {
     val sc = SparkContext.getOrCreate(_conf)
     val sqlContext = SQLContext.getOrCreate(sc)
-    import sqlContext._
-    import sqlContext.implicits._
 
     val products = sqlContext.read.json("%s/*/*.json".format(dataset))
 
     val productReviewsRDD = products.mapPartitions(mapPartitions).cache()
 
-    storeDataInMongo(productReviewsRDD, mongoHosts, mongoDB)(_conf)
-    storeDataInES(productReviewsRDD.map(x => x._1), esHost, esIndex)(_conf)
+    storeDataInMongo(productReviewsRDD)
+    storeDataInES(productReviewsRDD.map(x => x._1))
   }
 
-  private def storeDataInMongo(productReviewsRDD: RDD[(Product, Option[List[Review]])], mongoHosts: String, mongoDB: String)(implicit _conf: SparkConf): Unit = {
-    val productConfig = MongodbConfigBuilder(Map(Host -> mongoHosts.split(";").toList, Database -> mongoDB, Collection -> "products", SamplingRatio -> 1.0, WriteConcern -> "normal", SplitSize -> 8, SplitKey -> "_id"))
-    val reviewsConfig = MongodbConfigBuilder(Map(Host -> mongoHosts.split(";").toList, Database -> mongoDB, Collection -> "reviews", SamplingRatio -> 1.0, WriteConcern -> "normal", SplitSize -> 8, SplitKey -> "_id"))
+  private def storeDataInMongo(productReviewsRDD: RDD[(Product, Option[List[Review]])])(implicit _conf: SparkConf, mongoConf: MongoConfig): Unit = {
+    val productConfig = MongodbConfigBuilder(Map(Host -> mongoConf.hosts.split(";").toList, Database -> mongoConf.db, Collection -> "products"))
+    val reviewsConfig = MongodbConfigBuilder(Map(Host -> mongoConf.hosts.split(";").toList, Database -> mongoConf.db, Collection -> "reviews"))
 
     val sc = SparkContext.getOrCreate(_conf)
     val sqlContext = SQLContext.getOrCreate(sc)
-    import sqlContext._
     import sqlContext.implicits._
 
     productReviewsRDD.map(x => x._1).toDF().distinct().saveToMongodb(productConfig.build)
     productReviewsRDD.flatMap(x => x._2.getOrElse(List[Review]())).toDF().distinct().saveToMongodb(reviewsConfig.build)
   }
 
-  private def storeDataInES(productReviewsRDD: RDD[Product], esHost: String, esIndex: String)(implicit _conf: SparkConf): Unit = {
-    val options = Map("es.nodes" -> esHost, "es.http.timeout" -> "100m")
+  private def storeDataInES(productReviewsRDD: RDD[Product])(implicit _conf: SparkConf, esConf: ESConfig): Unit = {
+    val options = Map("es.nodes" -> esConf.hosts, "es.http.timeout" -> "100m")
     
     val sc = SparkContext.getOrCreate(_conf)
       
     val sqlContext = SQLContext.getOrCreate(sc)
-    import sqlContext._
-    import sqlContext.implicits._
     import org.elasticsearch.spark.sql._
+    import sqlContext.implicits._
 
-    productReviewsRDD.toDF().distinct().saveToEs("%s/products".format(esIndex), options)
+    productReviewsRDD.toDF().distinct().saveToEs("%s/products".format(esConf.index), options)
   }
 
   private def mapPartitions(rows: Iterator[Row]): Iterator[(Product, Option[List[Review]])] = {
