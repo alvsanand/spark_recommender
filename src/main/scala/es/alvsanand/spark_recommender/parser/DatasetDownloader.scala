@@ -16,16 +16,20 @@ object DatasetDownloader {
   private val TMP_DATASET_NAME = "%s/AmazonReviews.zip.tmp"
   private val FINAL_DATASET_NAME = "%s/AmazonReviews"
 
+  def getFinalDstName(dst: String): String = {
+    FINAL_DATASET_NAME.format(dst)
+  }
+
   @throws(classOf[IOException])
   def download(dst: String): Unit = {
     val fileName = DATASET_NAME.format(dst)
     val tmpFileName = TMP_DATASET_NAME.format(dst)
-    val finalDstName = FINAL_DATASET_NAME.format(dst)
+    val finalDstName = getFinalDstName(dst)
 
     val file = new File(fileName)
-    val finalDstDile = new File(finalDstName)
+    val finalDstFile = new File(finalDstName)
 
-    if (!finalDstDile.exists() || finalDstDile.list().size == 0) {
+    if (!finalDstFile.exists() || finalDstFile.list().size == 0) {
       if (!file.exists()) {
         println("Downloading Dataset file[%s] to %s".format(DATASET_URL, fileName))
 
