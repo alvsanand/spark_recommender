@@ -1,6 +1,6 @@
 package es.alvsanand.spark_recommender
 
-import es.alvsanand.spark_recommender.parser.{DatasetDownloader, ProductParser}
+import es.alvsanand.spark_recommender.parser.{DatasetDownloader, DatasetIngestion}
 import es.alvsanand.spark_recommender.utils.{ESConfig, MongoConfig}
 import org.apache.spark.SparkConf
 import scopt.OptionParser
@@ -8,9 +8,9 @@ import scopt.OptionParser
 /**
  * @author ${user.name}
  */
-object DatasetLoaderApp {
+object DatasetLoaderApp extends App {
 
-  def main(args : Array[String]) {
+  override def main(args : Array[String]) {
     val defaultParams = scala.collection.mutable.Map[String, String]()
     defaultParams += "spark.cores" -> "local[*]"
     defaultParams += "mongo.hosts" -> "127.0.0.1:27017"
@@ -55,7 +55,7 @@ object DatasetLoaderApp {
 
     try{
       DatasetDownloader.download(params("dataset.tmp.dir"))
-      ProductParser.storeData(DatasetDownloader.getFinalDstName(params("dataset.tmp.dir")))
+      DatasetIngestion.storeData(DatasetDownloader.getFinalDstName(params("dataset.tmp.dir")))
     }
     catch {
       case e: Exception =>

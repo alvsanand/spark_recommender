@@ -1,4 +1,4 @@
-package es.alvsanand.spark_recommender.parser
+package es.alvsanand.spark_recommender.trainer
 
 import com.mongodb.casbah.{WriteConcern => MongodbWriteConcern}
 import com.stratio.datasource.mongodb._

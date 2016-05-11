@@ -1,6 +1,6 @@
 package es.alvsanand.spark_recommender
 
-import es.alvsanand.spark_recommender.parser.ALSTrainer
+import es.alvsanand.spark_recommender.trainer.ALSTrainer
 import es.alvsanand.spark_recommender.utils.MongoConfig
 import org.apache.spark.SparkConf
 import scopt.OptionParser
@@ -8,9 +8,9 @@ import scopt.OptionParser
 /**
  * @author ${user.name}
  */
-object RecommenderTrainerApp {
+object RecommenderTrainerApp extends App {
 
-  def main(args : Array[String]) {
+  override def main(args : Array[String]) {
     val defaultParams = scala.collection.mutable.Map[String, String]()
     defaultParams += "spark.cores" -> "local[*]"
     defaultParams += "mongo.hosts" -> "127.0.0.1:27017"

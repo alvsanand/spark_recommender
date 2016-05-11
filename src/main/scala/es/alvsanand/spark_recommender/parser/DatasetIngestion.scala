@@ -7,6 +7,8 @@ import com.mongodb.casbah.{WriteConcern => MongodbWriteConcern}
 import com.stratio.datasource.mongodb._
 import com.stratio.datasource.mongodb.config.MongodbConfig._
 import com.stratio.datasource.mongodb.config._
+import es.alvsanand.spark_recommender.model
+import es.alvsanand.spark_recommender.model.Review
 import es.alvsanand.spark_recommender.utils.{ESConfig, MongoConfig}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.{Row, SQLContext}
@@ -14,14 +16,14 @@ import org.apache.spark.{SparkConf, SparkContext}
 
 import scala.collection.mutable
 
-case class Review(reviewId: String, userId: String, productId: String, val title: String, overall: Option[Double], content: String, date: java.sql.Timestamp)
 
-case class Product(productId: String, name: String, val price: String, features: String, imgUrl: String)
+
+
 
 /**
   * Created by alvsanand on 7/05/16.
   */
-object ProductParser {
+object DatasetIngestion {
 
   def storeData(dataset: String)(implicit _conf: SparkConf, mongoConf: MongoConfig, esConf: ESConfig): Unit = {
     val sc = SparkContext.getOrCreate(_conf)
@@ -35,7 +37,7 @@ object ProductParser {
     storeDataInES(productReviewsRDD.map { case ( product, reviews ) => product } )
   }
 
-  private def storeDataInMongo(productReviewsRDD: RDD[(Product, Option[List[Review]])])(implicit _conf: SparkConf, mongoConf: MongoConfig): Unit = {
+  private def storeDataInMongo(productReviewsRDD: RDD[(model.Product, Option[List[Review]])])(implicit _conf: SparkConf, mongoConf: MongoConfig): Unit = {
     val productConfig = MongodbConfigBuilder(Map(Host -> mongoConf.hosts.split(";").toList, Database -> mongoConf.db, Collection -> "products"))
     val reviewsConfig = MongodbConfigBuilder(Map(Host -> mongoConf.hosts.split(";").toList, Database -> mongoConf.db, Collection -> "reviews"))
 
@@ -47,7 +49,7 @@ object ProductParser {
     productReviewsRDD.flatMap { case ( product, reviews ) => reviews.getOrElse(List[Review]()) }.toDF().distinct().saveToMongodb(reviewsConfig.build)
   }
 
-  private def storeDataInES(productReviewsRDD: RDD[Product])(implicit _conf: SparkConf, esConf: ESConfig): Unit = {
+  private def storeDataInES(productReviewsRDD: RDD[model.Product])(implicit _conf: SparkConf, esConf: ESConfig): Unit = {
     val options = Map("es.nodes" -> esConf.hosts, "es.http.timeout" -> "100m")
     
     val sc = SparkContext.getOrCreate(_conf)
@@ -59,7 +61,7 @@ object ProductParser {
     productReviewsRDD.toDF().distinct().saveToEs("%s/products".format(esConf.index), options)
   }
 
-  private def mapPartitions(rows: Iterator[Row]): Iterator[(Product, Option[List[Review]])] = {
+  private def mapPartitions(rows: Iterator[Row]): Iterator[(model.Product, Option[List[Review]])] = {
     val df = new SimpleDateFormat("MMMM dd, yyyy", Locale.US)
 
     rows.flatMap { row =>
@@ -68,7 +70,7 @@ object ProductParser {
       }
       else{
         val productRow = row.getAs[Row]("ProductInfo")
-        val product = new Product(productRow.getAs[String]("ProductID"), productRow.getAs[String]("Name"), productRow.getAs[String]("Price"), productRow.getAs[String]("Features"), productRow.getAs[String]("ImgURL"))
+        val product = new model.Product(productRow.getAs[String]("ProductID"), productRow.getAs[String]("Name"), productRow.getAs[String]("Price"), productRow.getAs[String]("Features"), productRow.getAs[String]("ImgURL"))
 
         val reviews = row.fieldIndex("Reviews") match {
           case i if i > -1 =>
