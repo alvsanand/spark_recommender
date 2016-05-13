@@ -1,22 +1,13 @@
 package es.alvsanand.spark_recommender
 
-import akka.actor.ActorSystem
-import es.alvsanand.spark_recommender.model.{ProductRecommendationRequest, UserRecommendationRequest}
-import es.alvsanand.spark_recommender.parser.{DatasetDownloader, DatasetIngestion}
-import es.alvsanand.spark_recommender.recommender.RecsService
-import es.alvsanand.spark_recommender.recommender.RecsControllerProtocol._
+import es.alvsanand.spark_recommender.recommender.RecommenderController
 import es.alvsanand.spark_recommender.utils.{ESConfig, MongoConfig}
-import org.apache.spark.SparkConf
 import scopt.OptionParser
-import spray.httpx.SprayJsonSupport._
-import spray.routing.SimpleRoutingApp
 
 /**
   * Created by asantos on 11/05/16.
   */
-object RecommenderServerApp extends App with SimpleRoutingApp {
-  implicit val system = ActorSystem("ActorSystem")
-
+object RecommenderServerApp extends App {
   override def main(args: Array[String]) {
     val defaultParams = scala.collection.mutable.Map[String, String]()
     defaultParams += "server.port" -> "8080"
@@ -64,41 +55,18 @@ object RecommenderServerApp extends App with SimpleRoutingApp {
   private def run(params: Map[String, String]): Unit = {
     val serverPort = params("server.port").toInt
 
-    val mongoConf = new MongoConfig(params("mongo.hosts"), params("mongo.db"))
-    val esConf = new ESConfig(params("es.hosts"), params("mongo.db"))
+    implicit val mongoConf = new MongoConfig(params("mongo.hosts"), params("mongo.db"))
+    implicit val esConf = new ESConfig(params("es.hosts"), params("mongo.db"))
 
 
     try {
-      startServer(interface = "localhost", port = serverPort) {
-        path("recs/cf/product") {
-          get(
-            entity(as[ProductRecommendationRequest]) { request =>
-              // invoke using curl -H "Content-Type: application/json" -X POST -d @book-sample.json http://localhost:8080/books.json
-              // use book-sample.json from src/main/resources
-              complete {
-                RecsService.getCollaborativeFilteringRecommendations(request)
-              }
-            }
-          )
-        } ~
-        path("recs/cf/user") {
-          get(
-            entity(as[UserRecommendationRequest]) { request =>
-              complete {
-                RecsService.getCollaborativeFilteringRecommendations(request)
-              }
-            }
-          )
-        }
-      }
+      RecommenderController.run(serverPort)
     }
     catch {
       case e: Exception =>
-        println("Error executing DatasetLoaderApp")
+        println("Error executing RecommenderServerApp")
         println(e)
-        sys.exit(0)
+        sys.exit(1)
     }
-
-    sys.exit(0)
   }
 }

@@ -3,6 +3,7 @@ package es.alvsanand.spark_recommender.parser
 import java.text.SimpleDateFormat
 import java.util.Locale
 
+import com.mongodb.casbah.Imports._
 import com.mongodb.casbah.{WriteConcern => MongodbWriteConcern}
 import com.stratio.datasource.mongodb._
 import com.stratio.datasource.mongodb.config.MongodbConfig._
@@ -17,13 +18,12 @@ import org.apache.spark.{SparkConf, SparkContext}
 import scala.collection.mutable
 
 
-
-
-
 /**
   * Created by alvsanand on 7/05/16.
   */
 object DatasetIngestion {
+  val PRODUCTS_COLLECTION_NAME = "products"
+  val REVIEWS_COLLECTION_NAME = "reviews"
 
   def storeData(dataset: String)(implicit _conf: SparkConf, mongoConf: MongoConfig, esConf: ESConfig): Unit = {
     val sc = SparkContext.getOrCreate(_conf)
@@ -34,26 +34,32 @@ object DatasetIngestion {
     val productReviewsRDD = products.mapPartitions(mapPartitions).cache()
 
     storeDataInMongo(productReviewsRDD)
-    storeDataInES(productReviewsRDD.map { case ( product, reviews ) => product } )
+    storeDataInES(productReviewsRDD.map { case (product, reviews) => product })
   }
 
   private def storeDataInMongo(productReviewsRDD: RDD[(model.Product, Option[List[Review]])])(implicit _conf: SparkConf, mongoConf: MongoConfig): Unit = {
-    val productConfig = MongodbConfigBuilder(Map(Host -> mongoConf.hosts.split(";").toList, Database -> mongoConf.db, Collection -> "products"))
-    val reviewsConfig = MongodbConfigBuilder(Map(Host -> mongoConf.hosts.split(";").toList, Database -> mongoConf.db, Collection -> "reviews"))
+    val productConfig = MongodbConfigBuilder(Map(Host -> mongoConf.hosts.split(";").toList, Database -> mongoConf.db, Collection -> PRODUCTS_COLLECTION_NAME))
+    val reviewsConfig = MongodbConfigBuilder(Map(Host -> mongoConf.hosts.split(";").toList, Database -> mongoConf.db, Collection -> REVIEWS_COLLECTION_NAME))
 
     val sc = SparkContext.getOrCreate(_conf)
     val sqlContext = SQLContext.getOrCreate(sc)
     import sqlContext.implicits._
 
-    productReviewsRDD.map { case ( product, reviews ) => product } .toDF().distinct().saveToMongodb(productConfig.build)
-    productReviewsRDD.flatMap { case ( product, reviews ) => reviews.getOrElse(List[Review]()) }.toDF().distinct().saveToMongodb(reviewsConfig.build)
+    productReviewsRDD.map { case (product, reviews) => product }.toDF().distinct().saveToMongodb(productConfig.build)
+    productReviewsRDD.flatMap { case (product, reviews) => reviews.getOrElse(List[Review]()) }.toDF().distinct().saveToMongodb(reviewsConfig.build)
+
+    val mongoClient = MongoClient(MongoClientURI("mongodb://%s".format(mongoConf.hosts.split(";").mkString(","))))
+
+    mongoClient(mongoConf.db)(PRODUCTS_COLLECTION_NAME).createIndex(MongoDBObject("productId" -> 1))
+    mongoClient(mongoConf.db)(REVIEWS_COLLECTION_NAME).createIndex(MongoDBObject("productId" -> 1))
+    mongoClient(mongoConf.db)(REVIEWS_COLLECTION_NAME).createIndex(MongoDBObject("userId" -> 1))
   }
 
   private def storeDataInES(productReviewsRDD: RDD[model.Product])(implicit _conf: SparkConf, esConf: ESConfig): Unit = {
     val options = Map("es.nodes" -> esConf.hosts, "es.http.timeout" -> "100m")
-    
+
     val sc = SparkContext.getOrCreate(_conf)
-      
+
     val sqlContext = SQLContext.getOrCreate(sc)
     import org.elasticsearch.spark.sql._
     import sqlContext.implicits._
@@ -65,10 +71,10 @@ object DatasetIngestion {
     val df = new SimpleDateFormat("MMMM dd, yyyy", Locale.US)
 
     rows.flatMap { row =>
-      if(row.fieldIndex("ProductInfo") == -1 || row.getAs[Row]("ProductInfo").fieldIndex("ProductID") == -1 || row.getAs[Row]("ProductInfo").getAs[String]("ProductID")==null){
+      if (row.fieldIndex("ProductInfo") == -1 || row.getAs[Row]("ProductInfo").fieldIndex("ProductID") == -1 || row.getAs[Row]("ProductInfo").getAs[String]("ProductID") == null) {
         None
       }
-      else{
+      else {
         val productRow = row.getAs[Row]("ProductInfo")
         val product = new model.Product(productRow.getAs[String]("ProductID"), productRow.getAs[String]("Name"), productRow.getAs[String]("Price"), productRow.getAs[String]("Features"), productRow.getAs[String]("ImgURL"))
 

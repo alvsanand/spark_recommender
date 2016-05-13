@@ -6,31 +6,39 @@ import org.apache.spark.SparkConf
 import scopt.OptionParser
 
 /**
- * @author ${user.name}
- */
+  * @author ${user.name}
+  */
 object RecommenderTrainerApp extends App {
 
-  override def main(args : Array[String]) {
+  override def main(args: Array[String]) {
     val defaultParams = scala.collection.mutable.Map[String, String]()
     defaultParams += "spark.cores" -> "local[*]"
     defaultParams += "mongo.hosts" -> "127.0.0.1:27017"
     defaultParams += "mongo.db" -> "spark_recommender"
     defaultParams += "maxRecommendations" -> "100"
 
-    val parser = new OptionParser[scala.collection.mutable.Map[String, String]]("ScaleDataset"){
+    val parser = new OptionParser[scala.collection.mutable.Map[String, String]]("ScaleDataset") {
       head("Spark Recommender Example")
       opt[String]("spark.cores")
         .text("Number of cores in the Spark cluster")
-        .action((x: String, c) => { c += "spark.cores" -> x })
+        .action((x: String, c) => {
+          c += "spark.cores" -> x
+        })
       opt[String]("mongo.hosts")
         .text("Mongo Hosts")
-        .action((x: String, c) => { c += "mongo.hosts" -> x })
+        .action((x: String, c) => {
+          c += "mongo.hosts" -> x
+        })
       opt[String]("mongo.db")
         .text("Mongo Database")
-        .action((x: String, c) => { c += "mongo.db" -> x })
+        .action((x: String, c) => {
+          c += "mongo.db" -> x
+        })
       opt[String]("maxRecommendations")
         .text("Maximum number of recommendations")
-        .action((x: String, c) => { c += "maxRecommendations" -> x })
+        .action((x: String, c) => {
+          c += "maxRecommendations" -> x
+        })
     }
     parser.parse(args, defaultParams).map { params =>
       run(params.toMap)
@@ -44,7 +52,7 @@ object RecommenderTrainerApp extends App {
     implicit val mongoConf = new MongoConfig(params("mongo.hosts"), params("mongo.db"))
     val maxRecommendations = params("maxRecommendations").toInt
 
-    try{
+    try {
       ALSTrainer.calculateRecs(maxRecommendations)
     }
     catch {
