@@ -48,14 +48,17 @@ object DatasetIngestion {
     val productConfig = MongodbConfigBuilder(Map(Host -> mongoConf.hosts.split(";").toList, Database -> mongoConf.db, Collection -> PRODUCTS_COLLECTION_NAME))
     val reviewsConfig = MongodbConfigBuilder(Map(Host -> mongoConf.hosts.split(";").toList, Database -> mongoConf.db, Collection -> REVIEWS_COLLECTION_NAME))
 
+    val mongoClient = MongoClient(MongoClientURI("mongodb://%s".format(mongoConf.hosts.split(";").mkString(","))))
+
     val sc = SparkContext.getOrCreate(_conf)
     val sqlContext = SQLContext.getOrCreate(sc)
     import sqlContext.implicits._
 
+    mongoClient(mongoConf.db)(PRODUCTS_COLLECTION_NAME).dropCollection()
+    mongoClient(mongoConf.db)(REVIEWS_COLLECTION_NAME).dropCollection()
+
     productReviewsRDD.map { case (product, reviews) => product }.toDF().distinct().saveToMongodb(productConfig.build)
     productReviewsRDD.flatMap { case (product, reviews) => reviews.getOrElse(List[Review]()) }.toDF().distinct().saveToMongodb(reviewsConfig.build)
-
-    val mongoClient = MongoClient(MongoClientURI("mongodb://%s".format(mongoConf.hosts.split(";").mkString(","))))
 
     mongoClient(mongoConf.db)(PRODUCTS_COLLECTION_NAME).createIndex(MongoDBObject("productId" -> 1))
     mongoClient(mongoConf.db)(REVIEWS_COLLECTION_NAME).createIndex(MongoDBObject("productId" -> 1))

@@ -11,8 +11,9 @@ import scopt.OptionParser
 object DatasetLoaderApp extends App with Logging{
 
   override def main(args: Array[String]) {
-    val defaultParams = scala.collection.mutable.Map[String, String]()
+    val defaultParams = scala.collection.mutable.Map[String, Any]()
     defaultParams += "spark.cores" -> "local[*]"
+    defaultParams += "spark.option" -> scala.collection.mutable.Map[String, String]()
     defaultParams += "mongo.hosts" -> "127.0.0.1:27017"
     defaultParams += "mongo.db" -> "spark_recommender"
     defaultParams += "es.httpHosts" -> "127.0.0.1:9200"
@@ -20,12 +21,18 @@ object DatasetLoaderApp extends App with Logging{
     defaultParams += "es.index" -> "spark_recommender"
     defaultParams += "dataset.tmp.dir" -> "%s/.spark_recommender".format(sys.env("HOME"))
 
-    val parser = new OptionParser[scala.collection.mutable.Map[String, String]]("ScaleDataset") {
+    val parser = new OptionParser[scala.collection.mutable.Map[String, Any]]("ScaleDataset") {
       head("Spark Recommender Example")
       opt[String]("spark.cores")
         .text("Number of cores in the Spark cluster")
         .action((x: String, c) => {
           c += "spark.cores" -> x
+        })
+      opt[String]("spark.option")
+        .text("Spark Config Option")
+        .action((x: String, c) => {
+          x.split("=") match { case Array(key, value, _*) => c("spark.option").asInstanceOf[scala.collection.mutable.Map[String, Any]] += key -> value }
+          c
         })
       opt[String]("mongo.hosts")
         .text("Mongo Hosts")
@@ -65,15 +72,16 @@ object DatasetLoaderApp extends App with Logging{
     }
   }
 
-  private def run(params: Map[String, String]): Unit = {
-    implicit val conf = new SparkConf().setAppName("RecommenderTrainerApp").setMaster(params("spark.cores"))
-    implicit val mongoConf = new MongoConfig(params("mongo.hosts"), params("mongo.db"))
-    implicit val esConf = new ESConfig(params("es.httpHosts"), params("es.transportHosts"), params("es.index"))
+  private def run(params: Map[String, Any]): Unit = {
+    implicit val conf = new SparkConf().setAppName("RecommenderTrainerApp").setMaster(params("spark.cores").asInstanceOf[String])
+    params("spark.option").asInstanceOf[scala.collection.mutable.Map[String, Any]].foreach { case (key:String, value: String) => conf.set(key, value)}
+    implicit val mongoConf = new MongoConfig(params("mongo.hosts").asInstanceOf[String], params("mongo.db").asInstanceOf[String])
+    implicit val esConf = new ESConfig(params("es.httpHosts").asInstanceOf[String], params("es.transportHosts").asInstanceOf[String], params("es.index").asInstanceOf[String])
 
 
     try {
-      DatasetDownloader.download(params("dataset.tmp.dir"))
-      DatasetIngestion.storeData(DatasetDownloader.getFinalDstName(params("dataset.tmp.dir")))
+      DatasetDownloader.download(params("dataset.tmp.dir").asInstanceOf[String])
+      DatasetIngestion.storeData(DatasetDownloader.getFinalDstName(params("dataset.tmp.dir").asInstanceOf[String]))
     }
     catch {
       case e: Exception =>
