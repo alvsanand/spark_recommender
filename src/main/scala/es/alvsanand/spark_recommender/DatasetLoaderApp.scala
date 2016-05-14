@@ -1,21 +1,22 @@
 package es.alvsanand.spark_recommender
 
 import es.alvsanand.spark_recommender.parser.{DatasetDownloader, DatasetIngestion}
-import es.alvsanand.spark_recommender.utils.{ESConfig, MongoConfig}
+import es.alvsanand.spark_recommender.utils.{ESConfig, Logging, MongoConfig}
 import org.apache.spark.SparkConf
 import scopt.OptionParser
 
 /**
   * @author ${user.name}
   */
-object DatasetLoaderApp extends App {
+object DatasetLoaderApp extends App with Logging{
 
   override def main(args: Array[String]) {
     val defaultParams = scala.collection.mutable.Map[String, String]()
     defaultParams += "spark.cores" -> "local[*]"
     defaultParams += "mongo.hosts" -> "127.0.0.1:27017"
     defaultParams += "mongo.db" -> "spark_recommender"
-    defaultParams += "es.hosts" -> "127.0.0.1:9200"
+    defaultParams += "es.httpHosts" -> "127.0.0.1:9200"
+    defaultParams += "es.transportHosts" -> "127.0.0.1:9300"
     defaultParams += "es.index" -> "spark_recommender"
     defaultParams += "dataset.tmp.dir" -> "%s/.spark_recommender".format(sys.env("HOME"))
 
@@ -36,10 +37,15 @@ object DatasetLoaderApp extends App {
         .action((x: String, c) => {
           c += "mongo.db" -> x
         })
-      opt[String]("es.hosts")
-        .text("ElasicSearch Hosts")
+      opt[String]("es.httpHosts")
+        .text("ElasicSearch HTTP Hosts")
         .action((x: String, c) => {
-          c += "es.hosts" -> x
+          c += "es.httpHosts" -> x
+        })
+      opt[String]("es.transportHosts")
+        .text("ElasicSearch Transport Hosts")
+        .action((x: String, c) => {
+          c += "es.transportHosts" -> x
         })
       opt[String]("es.index")
         .text("ElasicSearch index")
@@ -62,7 +68,7 @@ object DatasetLoaderApp extends App {
   private def run(params: Map[String, String]): Unit = {
     implicit val conf = new SparkConf().setAppName("RecommenderTrainerApp").setMaster(params("spark.cores"))
     implicit val mongoConf = new MongoConfig(params("mongo.hosts"), params("mongo.db"))
-    implicit val esConf = new ESConfig(params("es.hosts"), params("mongo.db"))
+    implicit val esConf = new ESConfig(params("es.httpHosts"), params("es.transportHosts"), params("es.index"))
 
 
     try {
@@ -71,8 +77,7 @@ object DatasetLoaderApp extends App {
     }
     catch {
       case e: Exception =>
-        println("Error executing DatasetLoaderApp")
-        println(e)
+        logger.error("Error executing DatasetLoaderApp", e)
         sys.exit(1)
     }
 

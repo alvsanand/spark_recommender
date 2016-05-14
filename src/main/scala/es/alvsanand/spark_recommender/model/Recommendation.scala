@@ -8,3 +8,5 @@ case class Recommendation(productId: String, rating: Double)
 case class ProductRecommendationRequest(productId: String)
 
 case class UserRecommendationRequest(userId: String)
+
+case class SearchRecommendationRequest(text: String)

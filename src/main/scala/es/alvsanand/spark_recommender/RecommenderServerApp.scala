@@ -1,19 +1,20 @@
 package es.alvsanand.spark_recommender
 
 import es.alvsanand.spark_recommender.recommender.RecommenderController
-import es.alvsanand.spark_recommender.utils.{ESConfig, MongoConfig}
+import es.alvsanand.spark_recommender.utils.{ESConfig, Logging, MongoConfig}
 import scopt.OptionParser
 
 /**
   * Created by asantos on 11/05/16.
   */
-object RecommenderServerApp extends App {
+object RecommenderServerApp extends App with Logging{
   override def main(args: Array[String]) {
     val defaultParams = scala.collection.mutable.Map[String, String]()
     defaultParams += "server.port" -> "8080"
     defaultParams += "mongo.hosts" -> "127.0.0.1:27017"
     defaultParams += "mongo.db" -> "spark_recommender"
-    defaultParams += "es.hosts" -> "127.0.0.1:9200"
+    defaultParams += "es.httpHosts" -> "127.0.0.1:9200"
+    defaultParams += "es.transportHosts" -> "127.0.0.1:9300"
     defaultParams += "es.index" -> "spark_recommender"
     defaultParams += "server.port" -> "8080"
 
@@ -34,10 +35,15 @@ object RecommenderServerApp extends App {
         .action((x: String, c) => {
           c += "mongo.db" -> x
         })
-      opt[String]("es.hosts")
-        .text("ElasicSearch Hosts")
+      opt[String]("es.httpHosts")
+        .text("ElasicSearch HTTP Hosts")
         .action((x: String, c) => {
-          c += "es.hosts" -> x
+          c += "es.httpHosts" -> x
+        })
+      opt[String]("es.transportHosts")
+        .text("ElasicSearch Transport Hosts")
+        .action((x: String, c) => {
+          c += "es.transportHosts" -> x
         })
       opt[String]("es.index")
         .text("ElasicSearch index")
@@ -56,16 +62,14 @@ object RecommenderServerApp extends App {
     val serverPort = params("server.port").toInt
 
     implicit val mongoConf = new MongoConfig(params("mongo.hosts"), params("mongo.db"))
-    implicit val esConf = new ESConfig(params("es.hosts"), params("mongo.db"))
-
+    implicit val esConf = new ESConfig(params("es.httpHosts"), params("es.transportHosts"), params("es.index"))
 
     try {
       RecommenderController.run(serverPort)
     }
     catch {
       case e: Exception =>
-        println("Error executing RecommenderServerApp")
-        println(e)
+        logger.error("Error executing RecommenderServerApp", e)
         sys.exit(1)
     }
   }

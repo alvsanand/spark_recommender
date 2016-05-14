@@ -1,5 +1,6 @@
 package es.alvsanand.spark_recommender.parser
 
+import java.net.InetAddress
 import java.text.SimpleDateFormat
 import java.util.Locale
 
@@ -14,6 +15,10 @@ import es.alvsanand.spark_recommender.utils.{ESConfig, MongoConfig}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.{Row, SQLContext}
 import org.apache.spark.{SparkConf, SparkContext}
+import org.elasticsearch.action.admin.indices.delete.DeleteIndexRequest
+import org.elasticsearch.action.admin.indices.exists.indices.IndicesExistsRequest
+import org.elasticsearch.client.transport.TransportClient
+import org.elasticsearch.common.transport.InetSocketTransportAddress
 
 import scala.collection.mutable
 
@@ -24,12 +29,14 @@ import scala.collection.mutable
 object DatasetIngestion {
   val PRODUCTS_COLLECTION_NAME = "products"
   val REVIEWS_COLLECTION_NAME = "reviews"
+  val PRODUCTS_INDEX_NAME= "products"
+  val ES_HOST_PORT_REGEX = "(.+):(\\d+)".r
 
   def storeData(dataset: String)(implicit _conf: SparkConf, mongoConf: MongoConfig, esConf: ESConfig): Unit = {
     val sc = SparkContext.getOrCreate(_conf)
     val sqlContext = SQLContext.getOrCreate(sc)
 
-    val products = sqlContext.read.json("%s/*/*.json".format(dataset))
+    val products = sqlContext.read.json("%s/*.json".format(dataset))
 
     val productReviewsRDD = products.mapPartitions(mapPartitions).cache()
 
@@ -56,7 +63,16 @@ object DatasetIngestion {
   }
 
   private def storeDataInES(productReviewsRDD: RDD[model.Product])(implicit _conf: SparkConf, esConf: ESConfig): Unit = {
-    val options = Map("es.nodes" -> esConf.hosts, "es.http.timeout" -> "100m")
+    val options = Map("es.nodes" -> esConf.httpHosts, "es.http.timeout" -> "100m", "es.mapping.id" -> "productId")
+    val indexName = esConf.index
+    val typeName = "%s/%s".format(indexName, PRODUCTS_INDEX_NAME)
+
+    val esClient = TransportClient.builder().build()
+    esConf.transportHosts.split(";").foreach { case ES_HOST_PORT_REGEX(host: String, port: String) => esClient.addTransportAddress(new InetSocketTransportAddress(InetAddress.getByName(host), port.toInt)) }
+
+    if(esClient.admin().indices().exists(new IndicesExistsRequest(indexName)).actionGet().isExists){
+      esClient.admin().indices().delete(new DeleteIndexRequest(indexName)).actionGet()
+    }
 
     val sc = SparkContext.getOrCreate(_conf)
 
@@ -64,7 +80,7 @@ object DatasetIngestion {
     import org.elasticsearch.spark.sql._
     import sqlContext.implicits._
 
-    productReviewsRDD.toDF().distinct().saveToEs("%s/products".format(esConf.index), options)
+    productReviewsRDD.toDF().distinct().saveToEs(typeName, options)
   }
 
   private def mapPartitions(rows: Iterator[Row]): Iterator[(model.Product, Option[List[Review]])] = {

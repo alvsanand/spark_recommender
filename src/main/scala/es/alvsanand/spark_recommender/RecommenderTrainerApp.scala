@@ -1,14 +1,14 @@
 package es.alvsanand.spark_recommender
 
 import es.alvsanand.spark_recommender.trainer.ALSTrainer
-import es.alvsanand.spark_recommender.utils.MongoConfig
+import es.alvsanand.spark_recommender.utils.{Logging, MongoConfig}
 import org.apache.spark.SparkConf
 import scopt.OptionParser
 
 /**
   * @author ${user.name}
   */
-object RecommenderTrainerApp extends App {
+object RecommenderTrainerApp extends App with Logging {
 
   override def main(args: Array[String]) {
     val defaultParams = scala.collection.mutable.Map[String, String]()
@@ -57,8 +57,7 @@ object RecommenderTrainerApp extends App {
     }
     catch {
       case e: Exception =>
-        println("Error executing RecommenderTrainerApp")
-        println(e)
+        logger.error("Error executing RecommenderTrainerApp", e)
         sys.exit(1)
     }
 

@@ -3,13 +3,16 @@ package es.alvsanand.spark_recommender.parser
 import java.io._
 import java.net.URL
 
+import es.alvsanand.spark_recommender.utils.Logging
 import org.apache.commons.compress.archivers.zip.ZipFile
-import org.apache.commons.io.IOUtils
+import org.apache.commons.io.{FileUtils, IOUtils}
+
+import scala.io.Source
 
 /**
   * Created by alvsanand on 7/05/16.
   */
-object DatasetDownloader {
+object DatasetDownloader extends Logging{
   private val DATASET_URL = "http://times.cs.uiuc.edu/~wang296/Data/LARA/Amazon/AmazonReviews.zip"
 
   private val DATASET_NAME = "%s/AmazonReviews.zip"
@@ -31,7 +34,7 @@ object DatasetDownloader {
 
     if (!finalDstFile.exists() || finalDstFile.list().size == 0) {
       if (!file.exists()) {
-        println("Downloading Dataset file[%s] to %s".format(DATASET_URL, fileName))
+        logger.info("Downloading Dataset file[%s] to %s".format(DATASET_URL, fileName))
 
         var in = None: Option[InputStream]
         var out = None: Option[OutputStream]
@@ -52,24 +55,30 @@ object DatasetDownloader {
 
           tmpFile.renameTo(file)
 
-          println("Downloaded Dataset file[%s] to %s".format(DATASET_URL, fileName))
+          logger.info("Downloaded Dataset file[%s] to %s".format(DATASET_URL, fileName))
         } finally {
           if (in.isDefined) in.get.close
           if (out.isDefined) out.get.close
         }
       }
       else {
-        println("Dataset file[%s] already downloaded to %s".format(DATASET_URL, fileName))
+        logger.info("Dataset file[%s] already downloaded to %s".format(DATASET_URL, fileName))
       }
 
-      println("Unzziping Dataset file[%s] to %s".format(fileName, finalDstName))
+      logger.info("Unzziping Dataset file[%s] to %s".format(fileName, finalDstName))
 
       unzipFile(fileName, finalDstName)
 
-      println("Unzziped Dataset file[%s] to %s".format(fileName, finalDstName))
+      logger.info("Unzziped Dataset file[%s] to %s".format(fileName, finalDstName))
+
+      logger.info("Merging Dataset file[%s] to %s".format(fileName, finalDstName))
+
+      mergeSmallFiles(finalDstName)
+
+      logger.info("Merged Dataset file[%s] to %s".format(fileName, finalDstName))
     }
     else {
-      println("Dataset[%s] already exists in %s".format(DATASET_URL, finalDstName))
+      logger.info("Dataset[%s] already exists in %s".format(DATASET_URL, finalDstName))
     }
   }
 
@@ -105,6 +114,23 @@ object DatasetDownloader {
       }
     } finally {
       zipFile.close()
+    }
+  }
+
+  private def mergeSmallFiles(outputFolder: String): Unit = {
+    val folder = new File(outputFolder)
+
+    import collection.JavaConverters._
+
+    folder.listFiles.filter(_.isDirectory).foreach { d =>
+      val outFile = new File(folder, "%s.json".format(d.getName))
+
+      d.listFiles.filter( f => f.isFile && f.getName.matches(".*\\.json")).foreach { f =>
+        val in = Source.fromFile(f)
+        FileUtils.writeLines(outFile, in.getLines().toList.asJava, true)
+      }
+
+      FileUtils.deleteDirectory(d)
     }
   }
 }
