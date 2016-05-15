@@ -4,7 +4,7 @@ import java.net.InetAddress
 
 import akka.actor.ActorSystem
 import com.mongodb.casbah.Imports._
-import es.alvsanand.spark_recommender.model.{ProductRecommendationRequest, Recommendation, SearchRecommendationRequest, UserRecommendationRequest}
+import es.alvsanand.spark_recommender.model._
 import es.alvsanand.spark_recommender.parser.DatasetIngestion
 import es.alvsanand.spark_recommender.utils.{ESConfig, Logging, MongoConfig}
 import org.elasticsearch.client.transport.TransportClient
@@ -18,7 +18,9 @@ object RecommenderControllerProtocol extends DefaultJsonProtocol with NullOption
   implicit val productRecommendationRequestFormat = jsonFormat1(ProductRecommendationRequest)
   implicit val userRecommendationRequestFormat = jsonFormat1(UserRecommendationRequest)
   implicit val searchRecommendationRequestFormat = jsonFormat1(SearchRecommendationRequest)
+  implicit val productHybridRecommendationRequestFormat = jsonFormat1(ProductHybridRecommendationRequest)
   implicit val recommendationFormat = jsonFormat2(Recommendation)
+  implicit val hybridRecommendationFormat = jsonFormat3(HybridRecommendation)
 }
 
 /**
@@ -38,7 +40,7 @@ object RecommenderController extends SimpleRoutingApp with Logging{
     logger.info("Launching REST serves[port=%d]".format(serverPort))
 
     startServer(interface = "localhost", port = serverPort) {
-      path("recs" / "cf" / "product") {
+      path("recs" / "cf" / "pro") {
         post(
           entity(as[ProductRecommendationRequest]) { request =>
             // invoke using curl -H "Content-Type: application/json" -X POST -d @book-sample.json http://localhost:8080/books.json
@@ -49,7 +51,7 @@ object RecommenderController extends SimpleRoutingApp with Logging{
           }
         )
       } ~
-      path("recs" / "cf" / "user") {
+      path("recs" / "cf" / "usr") {
         post(
           entity(as[UserRecommendationRequest]) { request =>
             complete {
@@ -75,7 +77,16 @@ object RecommenderController extends SimpleRoutingApp with Logging{
             }
           }
         )
-      }
+      } ~
+        path("recs" / "hy" / "pro") {
+          post(
+            entity(as[ProductHybridRecommendationRequest]) { request =>
+              complete {
+                RecommenderService.getHybridRecommendations(request).toStream
+              }
+            }
+          )
+        }
     }
   }
 }

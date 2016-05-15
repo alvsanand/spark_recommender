@@ -1,7 +1,7 @@
 package es.alvsanand.spark_recommender.trainer
 
-import com.mongodb.casbah.Imports._
-import com.mongodb.casbah.{WriteConcern => MongodbWriteConcern}
+import com.mongodb.casbah.commons.MongoDBObject
+import com.mongodb.casbah.{MongoClient, MongoClientURI, WriteConcern => MongodbWriteConcern}
 import com.stratio.datasource.mongodb._
 import com.stratio.datasource.mongodb.config.MongodbConfig._
 import com.stratio.datasource.mongodb.config._
@@ -22,6 +22,7 @@ object ALSTrainer {
   val PRODUCT_RECS_COLLECTION_NAME = "productRecs"
 
   val MAX_RATING = 5.0
+  val MAX_RECOMMENDATIONS = 100
 
   def reviewStructure(): List[StructField] = {
     List(
@@ -105,7 +106,7 @@ object ALSTrainer {
     val sc = SparkContext.getOrCreate(_conf)
     val sqlContext = SQLContext.getOrCreate(sc)
 
-    val productRecs: RDD[Row] = sc.parallelize(productsMap.toList.map { case (idInt, id) =>
+    val productsRecs = productsMap.toList.map { case (idInt, id) =>
       val itemFactor = model.productFeatures.lookup(idInt).head
       val itemVector = new DoubleMatrix(itemFactor)
 
@@ -123,13 +124,14 @@ object ALSTrainer {
         .map { case (currentId, sim) => Row(currentId, sim) }.toList
 
       Row(id, recs)
-    })
+    }
+    val productRecsRDD: RDD[Row] = sc.parallelize(productsRecs)
 
     mongoClient(mongoConf.db)(PRODUCT_RECS_COLLECTION_NAME).dropCollection()
 
     val productRecsConfig = MongodbConfigBuilder(Map(Host -> mongoConf.hosts.split(";").toList, Database -> mongoConf.db, Collection -> PRODUCT_RECS_COLLECTION_NAME))
 
-    sqlContext.createDataFrame(productRecs, StructType(productRecsStructure))
+    sqlContext.createDataFrame(productRecsRDD, StructType(productRecsStructure))
       .saveToMongodb(productRecsConfig.build)
 
     mongoClient(mongoConf.db)(PRODUCT_RECS_COLLECTION_NAME).createIndex(MongoDBObject("productId" -> 1))

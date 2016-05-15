@@ -22,34 +22,35 @@ object RecommenderServerApp extends App with Logging{
       head("Spark Recommender Example")
       opt[String]("server.port")
         .text("HTTP server port")
-        .action((x: String, c) => {
+        .action((x, c) => {
           c += "server.port" -> x
         })
       opt[String]("mongo.hosts")
         .text("Mongo Hosts")
-        .action((x: String, c) => {
+        .action((x, c) => {
           c += "mongo.hosts" -> x
         })
       opt[String]("mongo.db")
         .text("Mongo Database")
-        .action((x: String, c) => {
+        .action((x, c) => {
           c += "mongo.db" -> x
         })
       opt[String]("es.httpHosts")
         .text("ElasicSearch HTTP Hosts")
-        .action((x: String, c) => {
+        .action((x, c) => {
           c += "es.httpHosts" -> x
         })
       opt[String]("es.transportHosts")
         .text("ElasicSearch Transport Hosts")
-        .action((x: String, c) => {
+        .action((x, c) => {
           c += "es.transportHosts" -> x
         })
       opt[String]("es.index")
         .text("ElasicSearch index")
-        .action((x: String, c) => {
+        .action((x, c) => {
           c += "es.index" -> x
         })
+      help("help") text("prints this usage text")
     }
     parser.parse(args, defaultParams).map { params =>
       run(params.toMap)

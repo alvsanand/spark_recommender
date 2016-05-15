@@ -4,8 +4,8 @@ import java.net.InetAddress
 import java.text.SimpleDateFormat
 import java.util.Locale
 
-import com.mongodb.casbah.Imports._
-import com.mongodb.casbah.{WriteConcern => MongodbWriteConcern}
+import com.mongodb.casbah.commons.MongoDBObject
+import com.mongodb.casbah.{MongoClient, MongoClientURI, WriteConcern => MongodbWriteConcern}
 import com.stratio.datasource.mongodb._
 import com.stratio.datasource.mongodb.config.MongodbConfig._
 import com.stratio.datasource.mongodb.config._
@@ -32,11 +32,16 @@ object DatasetIngestion {
   val PRODUCTS_INDEX_NAME= "products"
   val ES_HOST_PORT_REGEX = "(.+):(\\d+)".r
 
-  def storeData(dataset: String)(implicit _conf: SparkConf, mongoConf: MongoConfig, esConf: ESConfig): Unit = {
+  def storeData(dataset: String, datasetFile: Option[String] = None)(implicit _conf: SparkConf, mongoConf: MongoConfig, esConf: ESConfig): Unit = {
     val sc = SparkContext.getOrCreate(_conf)
     val sqlContext = SQLContext.getOrCreate(sc)
 
-    val products = sqlContext.read.json("%s/*.json".format(dataset))
+    val jsonFiles = datasetFile match {
+      case Some(s) => "%s/%s".format(dataset, s)
+      case None => "%s/*.json".format(dataset)
+    }
+
+    val products = sqlContext.read.json(jsonFiles)
 
     val productReviewsRDD = products.mapPartitions(mapPartitions).cache()
 

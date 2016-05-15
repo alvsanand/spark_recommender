@@ -16,36 +16,39 @@ object RecommenderTrainerApp extends App with Logging {
     defaultParams += "spark.option" -> scala.collection.mutable.Map[String, String]()
     defaultParams += "mongo.hosts" -> "127.0.0.1:27017"
     defaultParams += "mongo.db" -> "spark_recommender"
-    defaultParams += "maxRecommendations" -> "100"
+    defaultParams += "maxRecommendations" -> ALSTrainer.MAX_RECOMMENDATIONS.toString
 
     val parser = new OptionParser[scala.collection.mutable.Map[String, Any]]("ScaleDataset") {
       head("Spark Recommender Example")
       opt[String]("spark.cores")
         .text("Number of cores in the Spark cluster")
-        .action((x: String, c) => {
+        .action((x, c) => {
           c += "spark.cores" -> x
         })
-      opt[String]("spark.option")
+      opt[Map[String,String]]("spark.option")
         .text("Spark Config Option")
-        .action((x: String, c) => {
-          x.split("=") match { case Array(key, value, _*) => c("spark.option").asInstanceOf[scala.collection.mutable.Map[String, Any]] += key -> value }
+        .valueName("spark.property1=value1,spark.property2=value2,...")
+        .action { (x, c) => {
+          c("spark.option").asInstanceOf[scala.collection.mutable.Map[String, Any]] ++= x.toSeq
           c
-        })
+        }
+        }
       opt[String]("mongo.hosts")
         .text("Mongo Hosts")
-        .action((x: String, c) => {
+        .action((x, c) => {
           c += "mongo.hosts" -> x
         })
       opt[String]("mongo.db")
         .text("Mongo Database")
-        .action((x: String, c) => {
+        .action((x, c) => {
           c += "mongo.db" -> x
         })
       opt[String]("maxRecommendations")
         .text("Maximum number of recommendations")
-        .action((x: String, c) => {
+        .action((x, c) => {
           c += "maxRecommendations" -> x
         })
+      help("help") text("prints this usage text")
     }
     parser.parse(args, defaultParams).map { params =>
       run(params.toMap)
@@ -56,7 +59,7 @@ object RecommenderTrainerApp extends App with Logging {
 
   private def run(params: Map[String, Any]): Unit = {
     implicit val conf = new SparkConf().setAppName("RecommenderTrainerApp").setMaster(params("spark.cores").asInstanceOf[String])
-    params("spark.option").asInstanceOf[scala.collection.mutable.Map[String, Any]].foreach { case (key:String, value: String) => conf.set(key, value)}
+    params("spark.option").asInstanceOf[scala.collection.mutable.Map[String, Any]].foreach { case (key: String, value: String) => conf.set(key, value) }
 
     implicit val mongoConf = new MongoConfig(params("mongo.hosts").asInstanceOf[String], params("mongo.db").asInstanceOf[String])
     val maxRecommendations = params("maxRecommendations").asInstanceOf[String].toInt
