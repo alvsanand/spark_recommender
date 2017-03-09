@@ -1,4 +1,4 @@
-# spark_recommender
+# Product Recommender based on Apache Spark and Elasticsearch
 This repository is a just Proof of Cncept \(POC\) of how to create a Product Recommender using the latest Big Data technologies such as [Apache Spark](http://spark.apache.org) and [Elasticsearch](https://www.elastic.co/products/elasticsearch).
 
 It is very advisable to read my two articles that refers to this PoC where you can find some theory behind the recommenders and more technical detail:
@@ -6,7 +6,7 @@ It is very advisable to read my two articles that refers to this PoC where you c
 * [Creating a Recommender System Part I](http://blog.stratio.com/creating-a-recommender-system-part-i/) 
 * [Creating a Recommender System Part II](http://blog.stratio.com/creating-recommender-system-part-two/) 
 
-# Technical Requirements
+## Technical Requirements
 
 In order to launch this Poc, you must have running:
 
