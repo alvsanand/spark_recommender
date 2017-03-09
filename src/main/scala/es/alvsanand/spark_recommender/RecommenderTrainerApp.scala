@@ -18,8 +18,8 @@ object RecommenderTrainerApp extends App with Logging {
     defaultParams += "mongo.db" -> "spark_recommender"
     defaultParams += "maxRecommendations" -> ALSTrainer.MAX_RECOMMENDATIONS.toString
 
-    val parser = new OptionParser[scala.collection.mutable.Map[String, Any]]("ScaleDataset") {
-      head("Spark Recommender Example")
+    val parser = new OptionParser[scala.collection.mutable.Map[String, Any]]("RecommenderTrainerApp") {
+      head("Recommendation System Trainer")
       opt[String]("spark.cores")
         .text("Number of cores in the Spark cluster")
         .action((x, c) => {

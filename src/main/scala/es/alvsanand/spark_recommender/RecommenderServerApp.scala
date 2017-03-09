@@ -7,9 +7,9 @@ import scopt.OptionParser
 /**
   * Created by asantos on 11/05/16.
   */
-object RecommenderServerApp extends App with Logging{
+object RecommenderServerApp extends App with Logging {
   override def main(args: Array[String]) {
-    val defaultParams = scala.collection.mutable.Map[String, String]()
+    val defaultParams = scala.collection.mutable.Map[String, Any]()
     defaultParams += "server.port" -> "8080"
     defaultParams += "mongo.hosts" -> "127.0.0.1:27017"
     defaultParams += "mongo.db" -> "spark_recommender"
@@ -18,8 +18,8 @@ object RecommenderServerApp extends App with Logging{
     defaultParams += "es.index" -> "spark_recommender"
     defaultParams += "server.port" -> "8080"
 
-    val parser = new OptionParser[scala.collection.mutable.Map[String, String]]("ScaleDataset") {
-      head("Spark Recommender Example")
+    val parser = new OptionParser[scala.collection.mutable.Map[String, Any]]("RecommenderServerApp") {
+      head("Recommendation System Server")
       opt[String]("server.port")
         .text("HTTP server port")
         .action((x, c) => {
@@ -50,7 +50,7 @@ object RecommenderServerApp extends App with Logging{
         .action((x, c) => {
           c += "es.index" -> x
         })
-      help("help") text("prints this usage text")
+      help("help") text ("prints this usage text")
     }
     parser.parse(args, defaultParams).map { params =>
       run(params.toMap)
@@ -59,11 +59,11 @@ object RecommenderServerApp extends App with Logging{
     }
   }
 
-  private def run(params: Map[String, String]): Unit = {
-    val serverPort = params("server.port").toInt
+  private def run(params: Map[String, Any]): Unit = {
+    val serverPort = params("server.port").asInstanceOf[String].toInt
 
-    implicit val mongoConf = new MongoConfig(params("mongo.hosts"), params("mongo.db"))
-    implicit val esConf = new ESConfig(params("es.httpHosts"), params("es.transportHosts"), params("es.index"))
+    implicit val mongoConf = new MongoConfig(params("mongo.hosts").asInstanceOf[String], params("mongo.db").asInstanceOf[String])
+    implicit val esConf = new ESConfig(params("es.httpHosts").asInstanceOf[String], params("es.transportHosts").asInstanceOf[String], params("es.index").asInstanceOf[String])
 
     try {
       RecommenderController.run(serverPort)
