@@ -14,7 +14,7 @@ object RecommenderTrainerApp extends App with Logging {
     val defaultParams = scala.collection.mutable.Map[String, Any]()
     defaultParams += "spark.cores" -> "local[*]"
     defaultParams += "spark.option" -> scala.collection.mutable.Map[String, String]()
-    defaultParams += "mongo.hosts" -> "127.0.0.1:27017"
+    defaultParams += "mongo.uri" -> "mongodb://127.0.0.1:27017/spark_recommender"
     defaultParams += "mongo.db" -> "spark_recommender"
     defaultParams += "maxRecommendations" -> ALSTrainer.MAX_RECOMMENDATIONS.toString
 
@@ -33,10 +33,10 @@ object RecommenderTrainerApp extends App with Logging {
           c
         }
         }
-      opt[String]("mongo.hosts")
+      opt[String]("mongo.uri")
         .text("Mongo Hosts")
         .action((x, c) => {
-          c += "mongo.hosts" -> x
+          c += "mongo.uri" -> x
         })
       opt[String]("mongo.db")
         .text("Mongo Database")
@@ -61,7 +61,7 @@ object RecommenderTrainerApp extends App with Logging {
     implicit val conf = new SparkConf().setAppName("RecommenderTrainerApp").setMaster(params("spark.cores").asInstanceOf[String])
     params("spark.option").asInstanceOf[scala.collection.mutable.Map[String, Any]].foreach { case (key: String, value: String) => conf.set(key, value) }
 
-    implicit val mongoConf = new MongoConfig(params("mongo.hosts").asInstanceOf[String], params("mongo.db").asInstanceOf[String])
+    implicit val mongoConf = new MongoConfig(params("mongo.uri").asInstanceOf[String], params("mongo.db").asInstanceOf[String])
     val maxRecommendations = params("maxRecommendations").asInstanceOf[String].toInt
 
     try {

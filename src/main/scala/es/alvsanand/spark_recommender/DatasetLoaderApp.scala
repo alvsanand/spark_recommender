@@ -14,7 +14,7 @@ object DatasetLoaderApp extends App with Logging {
     val defaultParams = scala.collection.mutable.Map[String, Any]()
     defaultParams += "spark.cores" -> "local[*]"
     defaultParams += "spark.option" -> scala.collection.mutable.Map[String, String]()
-    defaultParams += "mongo.hosts" -> "127.0.0.1:27017"
+    defaultParams += "mongo.uri" -> "mongodb://127.0.0.1:27017/spark_recommender"
     defaultParams += "mongo.db" -> "spark_recommender"
     defaultParams += "es.httpHosts" -> "127.0.0.1:9200"
     defaultParams += "es.transportHosts" -> "127.0.0.1:9300"
@@ -36,10 +36,10 @@ object DatasetLoaderApp extends App with Logging {
           c
         }
         }
-      opt[String]("mongo.hosts")
-        .text("Mongo Hosts")
+      opt[String]("mongo.uri")
+        .text("Mongo URI including the DB")
         .action((x, c) => {
-          c += "mongo.hosts" -> x
+          c += "mongo.uri" -> x
         })
       opt[String]("mongo.db")
         .text("Mongo Database")
@@ -83,7 +83,7 @@ object DatasetLoaderApp extends App with Logging {
   private def run(params: Map[String, Any]): Unit = {
     implicit val conf = new SparkConf().setAppName("RecommenderTrainerApp").setMaster(params("spark.cores").asInstanceOf[String])
     params("spark.option").asInstanceOf[scala.collection.mutable.Map[String, Any]].foreach { case (key: String, value: String) => conf.set(key, value) }
-    implicit val mongoConf = new MongoConfig(params("mongo.hosts").asInstanceOf[String], params("mongo.db").asInstanceOf[String])
+    implicit val mongoConf = new MongoConfig(params("mongo.uri").asInstanceOf[String], params("mongo.db").asInstanceOf[String])
     implicit val esConf = new ESConfig(params("es.httpHosts").asInstanceOf[String], params("es.transportHosts").asInstanceOf[String], params("es.index").asInstanceOf[String])
 
 

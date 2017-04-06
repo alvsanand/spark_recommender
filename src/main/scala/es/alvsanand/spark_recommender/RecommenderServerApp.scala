@@ -5,13 +5,13 @@ import es.alvsanand.spark_recommender.utils.{ESConfig, Logging, MongoConfig}
 import scopt.OptionParser
 
 /**
-  * Created by asantos on 11/05/16.
+  * Created by alvsanand on 11/05/16.
   */
 object RecommenderServerApp extends App with Logging {
   override def main(args: Array[String]) {
     val defaultParams = scala.collection.mutable.Map[String, Any]()
     defaultParams += "server.port" -> "8080"
-    defaultParams += "mongo.hosts" -> "127.0.0.1:27017"
+    defaultParams += "mongo.uri" -> "mongodb://127.0.0.1:27017/spark_recommender"
     defaultParams += "mongo.db" -> "spark_recommender"
     defaultParams += "es.httpHosts" -> "127.0.0.1:9200"
     defaultParams += "es.transportHosts" -> "127.0.0.1:9300"
@@ -25,10 +25,10 @@ object RecommenderServerApp extends App with Logging {
         .action((x, c) => {
           c += "server.port" -> x
         })
-      opt[String]("mongo.hosts")
+      opt[String]("mongo.uri")
         .text("Mongo Hosts")
         .action((x, c) => {
-          c += "mongo.hosts" -> x
+          c += "mongo.uri" -> x
         })
       opt[String]("mongo.db")
         .text("Mongo Database")
@@ -62,7 +62,7 @@ object RecommenderServerApp extends App with Logging {
   private def run(params: Map[String, Any]): Unit = {
     val serverPort = params("server.port").asInstanceOf[String].toInt
 
-    implicit val mongoConf = new MongoConfig(params("mongo.hosts").asInstanceOf[String], params("mongo.db").asInstanceOf[String])
+    implicit val mongoConf = new MongoConfig(params("mongo.uri").asInstanceOf[String], params("mongo.db").asInstanceOf[String])
     implicit val esConf = new ESConfig(params("es.httpHosts").asInstanceOf[String], params("es.transportHosts").asInstanceOf[String], params("es.index").asInstanceOf[String])
 
     try {

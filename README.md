@@ -58,10 +58,16 @@ Usage: RecommenderTrainerApp [options]
         Number of cores in the Spark cluster
   --spark.option spark.property1=value1,spark.property2=value2,...
         Spark Config Option
-  --mongo.hosts <value>
-        Mongo Hosts
+  --mongo.uri <value>
+        Mongo uri (mongodb://db1.example.net,db2.example.net:27002,db3.example.net:27003/database)
   --mongo.db <value>
         Mongo Database
+  --es.httpHosts <value>
+        ElasicSearch HTTP Hosts (http://elastic:9200)
+  --es.transportHosts <value>
+        ElasicSearch Transport Hosts (http://elastic:9300)
+  --es.index <value>
+        ElasicSearch index
   --maxRecommendations <value>
         Maximum number of recommendations
   --help
@@ -75,20 +81,20 @@ It is a REST API server that returns product recommendations. This PoC is able t
 * Collaborative Filtering:
     * User-Product:
     
-    ```curl -H "Content-Type: application/json" -XPOST 'localhost:8080/recs/cf/user' -d '{"userId": "Adam C. Kauffman"}'```
+    ```curl -H "Content-Type: application/json" -XPOST 'localhost:8080/recs/cf/usr' -d '{"userId": 28413167}'```
     * Product-Product:
     
-    ```curl -H "Content-Type: application/json" -XPOST 'localhost:8080/recs/cf/product' -d '{"productId": "B00E3JJZ5U"}'```
+    ```curl -H "Content-Type: application/json" -XPOST 'localhost:8080/recs/cf/pro' -d '{"productId": 257297861}'```
 * Content Based:
     * Search Based:
                       
-    ```curl -H "Content-Type: application/json" -XPOST 'localhost:8080/recs/cb/sch' -d '{"text": "MY TEXT"}'```
+    ```curl -H "Content-Type: application/json" -XPOST 'localhost:8080/recs/cb/sch' -d '{"text": "Phone"}'```
     * Similar Product:
                          
-    ```curl -H "Content-Type: application/json" -XPOST 'localhost:8080/recs/cb/mrl' -d '{"productId": "B00E3JJZ5U"}'```
+    ```curl -H "Content-Type: application/json" -XPOST 'localhost:8080/recs/cb/mrl' -d '{"productId": 257297861}'```
 * Hybrid Recommendations (Product-Product CF and Similar Product CB):
                                                                                              
-    ```curl -H "Content-Type: application/json" -XPOST 'localhost:8080/recs/hy/pro' -d '{"productId": "B00E3JJZ5U"}'```
+    ```curl -H "Content-Type: application/json" -XPOST 'localhost:8080/recs/hy/pro' -d '{"productId": 257297861}'```
 
 ### How to launch the server
 
@@ -106,14 +112,14 @@ Usage: RecommenderServerApp [options]
 
   --server.port <value>
         HTTP server port
-  --mongo.hosts <value>
-        Mongo Hosts
+  --mongo.uri <value>
+        Mongo uri (mongodb://db1.example.net,db2.example.net:27002,db3.example.net:27003/database)
   --mongo.db <value>
         Mongo Database
   --es.httpHosts <value>
-        ElasicSearch HTTP Hosts
+        ElasicSearch HTTP Hosts (http://elastic:9200)
   --es.transportHosts <value>
-        ElasicSearch Transport Hosts
+        ElasicSearch Transport Hosts (http://elastic:9300)
   --es.index <value>
         ElasicSearch index
   --help

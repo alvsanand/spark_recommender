@@ -4,14 +4,14 @@ import com.mongodb.casbah.Imports._
 import es.alvsanand.spark_recommender.model._
 import es.alvsanand.spark_recommender.parser.DatasetIngestion
 import es.alvsanand.spark_recommender.trainer.ALSTrainer
-import es.alvsanand.spark_recommender.utils.{ESConfig, MongoConfig}
+import es.alvsanand.spark_recommender.utils.{ESConfig, HashUtils, MongoConfig}
 import org.elasticsearch.action.search.SearchResponse
 import org.elasticsearch.client.Client
 import org.elasticsearch.index.query.{MoreLikeThisQueryBuilder, QueryBuilders}
 import org.elasticsearch.search.SearchHits
 
 /**
-  * Created by asantos on 11/05/16.
+  * Created by alvsanand on 11/05/16.
   */
 object RecommenderService {
   private val MAX_RECOMMENDATIONS = 10
@@ -29,30 +29,31 @@ object RecommenderService {
     response.getHits match {
       case null => List[Recommendation]()
       case hits: SearchHits if hits.getTotalHits == 0 => List[Recommendation]()
-      case hits: SearchHits if hits.getTotalHits > 0 => hits.getHits.map { hit => new Recommendation(hit.getId, hit.getScore) }.toList
+      case hits: SearchHits if hits.getTotalHits > 0 => hits.getHits.map { hit => new Recommendation(hit.getId.toInt, hit.getScore) }.toList
     }
   }
 
   private def parseRec(o: DBObject): Recommendation = {
-    new Recommendation(o.getAs[String]("pid").getOrElse(null), o.getAs[Double]("r").getOrElse(0))
+    new Recommendation(o.getAs[Int]("pid").getOrElse(0), o.getAs[Double]("r").getOrElse(0))
   }
 
-  private def findProductCFRecs(productId: String, maxItems: Int)(implicit mongoClient: MongoClient, mongoConf: MongoConfig): List[Recommendation] = {
-    val listRecs = mongoClient(mongoConf.db)(ALSTrainer.PRODUCT_RECS_COLLECTION_NAME).findOne(MongoDBObject("productId" -> productId)).getOrElse(MongoDBObject())
+  private def findProductCFRecs(productId: Int, maxItems: Int)(implicit mongoClient: MongoClient, mongoConf: MongoConfig): List[Recommendation] = {
+    val listRecs = mongoClient(mongoConf.db)(ALSTrainer.PRODUCT_RECS_COLLECTION_NAME).findOne(MongoDBObject("id" -> productId)).getOrElse(MongoDBObject())
 
     return parseProductRecs(listRecs, MAX_RECOMMENDATIONS)
   }
 
-  private def findUserCFRecs(userId: String, maxItems: Int)(implicit mongoClient: MongoClient, mongoConf: MongoConfig): List[Recommendation] = {
-    val listRecs = mongoClient(mongoConf.db)(ALSTrainer.USER_RECS_COLLECTION_NAME).findOne(MongoDBObject("userId" -> userId)).getOrElse(MongoDBObject())
+  private def findUserCFRecs(userId: Int, maxItems: Int)(implicit mongoClient: MongoClient, mongoConf: MongoConfig): List[Recommendation] = {
+    val listRecs = mongoClient(mongoConf.db)(ALSTrainer.USER_RECS_COLLECTION_NAME).findOne(MongoDBObject("id" -> userId)).getOrElse(MongoDBObject())
 
-    return parseProductRecs(listRecs, MAX_RECOMMENDATIONS)
+    return parseUserRecs(listRecs, MAX_RECOMMENDATIONS)
   }
 
-  private def findContentBasedMoreLikeThisRecommendations(productId: String, maxItems: Int)(implicit esClient: Client, esConf: ESConfig): List[Recommendation] = {
+  private def findContentBasedMoreLikeThisRecommendations(productId: Int, maxItems: Int)(implicit esClient: Client, esConf: ESConfig): List[Recommendation] = {
     val indexName = esConf.index
-    val query = QueryBuilders.moreLikeThisQuery("name", "features")
-      .addLikeItem(new MoreLikeThisQueryBuilder.Item(indexName, DatasetIngestion.PRODUCTS_INDEX_NAME, productId))
+    val query = QueryBuilders.moreLikeThisQuery(Array("id"),
+      Array("features"),
+      Array(new MoreLikeThisQueryBuilder.Item(indexName, DatasetIngestion.PRODUCTS_INDEX_NAME, productId.toString)))
 
     return parseESResponse(esClient.prepareSearch().setQuery(query).setSize(MAX_RECOMMENDATIONS).execute().actionGet())
   }
@@ -65,10 +66,12 @@ object RecommenderService {
     return parseESResponse(esClient.prepareSearch().setIndices(indexName).setTypes(DatasetIngestion.PRODUCTS_INDEX_NAME).setQuery(query).setSize(maxItems).execute().actionGet())
   }
 
-  private def findHybridRecommendations(productId: String, maxItems: Int, cfRatingFactor: Double)(implicit mongoClient: MongoClient, mongoConf: MongoConfig, esClient: Client, esConf: ESConfig): List[HybridRecommendation] = {
+  private def findHybridRecommendations(productId: Int, maxItems: Int, cfRatingFactor: Double)(implicit mongoClient: MongoClient, mongoConf: MongoConfig, esClient: Client, esConf: ESConfig): List[HybridRecommendation] = {
     val cbRatingFactor = 1 - cfRatingFactor
-    val cfRecs = findProductCFRecs(productId, ALSTrainer.MAX_RECOMMENDATIONS).map(x => new HybridRecommendation(x.productId, x.rating, x.rating * cfRatingFactor))
-    val cbRecs = findContentBasedMoreLikeThisRecommendations(productId, ALSTrainer.MAX_RECOMMENDATIONS).map(x => new HybridRecommendation(x.productId, x.rating, x.rating * cbRatingFactor))
+    val cfRecs = findProductCFRecs(productId, ALSTrainer.MAX_RECOMMENDATIONS)
+      .map(x => new HybridRecommendation(x.productId, x.rating, x.rating * cfRatingFactor))
+    val cbRecs = findContentBasedMoreLikeThisRecommendations(productId, ALSTrainer.MAX_RECOMMENDATIONS)
+      .map(x => new HybridRecommendation(x.productId, x.rating, x.rating * cbRatingFactor))
 
     val finalRecs = cfRecs ::: cbRecs
 

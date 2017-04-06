@@ -2,17 +2,19 @@ package es.alvsanand.spark_recommender.trainer
 
 import com.mongodb.casbah.commons.MongoDBObject
 import com.mongodb.casbah.{MongoClient, MongoClientURI, WriteConcern => MongodbWriteConcern}
-import com.stratio.datasource.mongodb._
-import com.stratio.datasource.mongodb.config.MongodbConfig._
-import com.stratio.datasource.mongodb.config._
+import es.alvsanand.spark_recommender.model.{ProductRecommendation, Rec, Review, UserRecommendation}
+import es.alvsanand.spark_recommender.parser.DatasetIngestion
 import es.alvsanand.spark_recommender.utils.MongoConfig
+import org.apache.spark.SparkConf
 import org.apache.spark.broadcast.Broadcast
-import org.apache.spark.mllib.recommendation.{ALS, MatrixFactorizationModel, Rating}
+import org.apache.spark.ml.recommendation.{ALS, ALSModel}
+import org.apache.spark.ml.recommendation.ALS.Rating
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.types.{StructType, _}
-import org.apache.spark.sql.{Row, SQLContext}
-import org.apache.spark.{SparkConf, SparkContext}
+import org.apache.spark.sql.{Dataset, Row, SparkSession}
 import org.jblas.DoubleMatrix
+
+import scala.collection.mutable
 
 /**
   * Created by alvsanand on 7/05/16.
@@ -21,120 +23,135 @@ object ALSTrainer {
   val USER_RECS_COLLECTION_NAME = "userRecs"
   val PRODUCT_RECS_COLLECTION_NAME = "productRecs"
 
-  val MAX_RATING = 5.0
+  val MAX_RATING = 5.0F
   val MAX_RECOMMENDATIONS = 100
 
-  def reviewStructure(): List[StructField] = {
-    List(
-      StructField("_id", StringType),
-      StructField("reviewId", StringType),
-      StructField("userId", StringType),
-      StructField("productId", StringType),
-      StructField("title", StringType),
-      StructField("overall", DoubleType),
-      StructField("content", StringType),
-      StructField("date", DateType)
-    )
-  }
-
-  def productRecommendationStructure(): List[StructField] = {
-    List(
-      StructField("pid", StringType),
-      StructField("r", DoubleType)
-    )
-  }
-
-  def userRecsStructure(): List[StructField] = {
-    List(
-      StructField("userId", StringType),
-      StructField("recs", ArrayType(StructType(productRecommendationStructure)))
-    )
-  }
-
-  def productRecsStructure(): List[StructField] = {
-    List(
-      StructField("productId", StringType),
-      StructField("recs", ArrayType(StructType(productRecommendationStructure)))
-    )
-  }
-
   def calculateRecs(maxRecs: Int)(implicit _conf: SparkConf, mongoConf: MongoConfig): Unit = {
-    val reviewsConfig = MongodbConfigBuilder(Map(Host -> mongoConf.hosts.split(";").toList, Database -> mongoConf.db, Collection -> "reviews"))
+    val spark = SparkSession.builder()
+      .config(_conf)
+      .getOrCreate()
 
-    val sc = SparkContext.getOrCreate(_conf)
-    val sqlContext = SQLContext.getOrCreate(sc)
+    import spark.implicits._
+    import org.apache.spark.sql.functions._
 
-    val mongoRDD = sqlContext.fromMongoDB(reviewsConfig.build(), Option(StructType(reviewStructure)))
-    mongoRDD.registerTempTable("reviews")
+    val ratings = spark.read
+      .option("uri", mongoConf.uri)
+      .option("collection", DatasetIngestion.REVIEWS_COLLECTION_NAME)
+      .format("com.mongodb.spark.sql")
+      .load()
+      .select($"userId".as("user"), $"productId".as("item"), $"overall".cast(FloatType).as("rating"))
+      .where($"userId".isNotNull && $"productId".isNotNull && $"overall".isNotNull)
+      .cache
 
-    val ratingsDF = sqlContext.sql("select userId, productId, overall from reviews where userId is not null and productId is not null and overall is not null").cache
+    val users = spark.read
+      .option("uri", mongoConf.uri)
+      .option("collection", DatasetIngestion.USERS_COLLECTION_NAME)
+      .format("com.mongodb.spark.sql")
+      .load()
+      .select($"id")
+      .distinct
+      .map(r => r.getAs[Int]("id"))
+      .cache
 
-    val ratingsRDD = ratingsDF.map { row => Rating(row.getAs[String]("userId").hashCode, row.getAs[String]("productId").hashCode, row.getAs[Double]("overall").toFloat / MAX_RATING) }
-    val usersRDD: RDD[(Int, String)] = ratingsDF.map(row => row.getAs[String]("userId")).map(userId => (userId.hashCode, userId))
-    val productsRDD: RDD[(Int, String)] = ratingsDF.map(row => row.getAs[String]("productId")).map(productId => (productId.hashCode, productId))
-    val productsMap: Broadcast[Map[Int, String]] = sc.broadcast(productsRDD.collect().toMap)
+    val products = spark.read
+      .option("uri", mongoConf.uri)
+      .option("collection", DatasetIngestion.PRODUCTS_COLLECTION_NAME)
+      .format("com.mongodb.spark.sql")
+      .load()
+      .select($"id")
+      .distinct
+      .map(r => r.getAs[Int]("id"))
+      .cache
 
-    val rank = 10
-    val numIterations = 10
-    val model = ALS.train(ratingsRDD, rank, numIterations, 0.01)
+    val als = new ALS()
+      .setMaxIter(5)
+      .setRegParam(0.01)
+      .setUserCol("user")
+      .setItemCol("item")
+      .setRatingCol("rating")
+    val model = als.fit(ratings)
 
-    implicit val mongoClient = MongoClient(MongoClientURI("mongodb://%s".format(mongoConf.hosts.split(";").mkString(","))))
+    implicit val mongoClient = MongoClient(MongoClientURI(mongoConf.uri))
 
-    calculateUserRecs(maxRecs, model, usersRDD, productsMap)
-    calculateProductRecs(maxRecs, model, productsMap.value)
+    calculateUserRecs(maxRecs, model, users, products)
+    calculateProductRecs(maxRecs, model, products)
   }
 
-  private def calculateUserRecs(maxRecs: Int, model: MatrixFactorizationModel, usersRDD: RDD[(Int, String)], productsMap: Broadcast[Map[Int, String]])(implicit _conf: SparkConf, mongoConf: MongoConfig, mongoClient: MongoClient): Unit = {
-    val sc = SparkContext.getOrCreate(_conf)
-    val sqlContext = SQLContext.getOrCreate(sc)
+  private def calculateUserRecs(maxRecs: Int, model: ALSModel, users: Dataset[Int], products: Dataset[Int])(implicit mongoConf: MongoConfig, mongoClient: MongoClient): Unit = {
+    import users.sqlContext.implicits._
+    import org.apache.spark.sql.functions._
 
-    val userRecs: RDD[Row] = model.recommendProductsForUsers(maxRecs)
-      .join(usersRDD)
-      .map { case (userIdInt, (ratings, userId)) => Row(userId, ratings.map { rating => Row(productsMap.value.get(rating.product).get, rating.rating) }.toList) }
+    val userProductsJoin = users.crossJoin(products)
+    val userRating = userProductsJoin.map { row => Rating(row.getAs[Int](0), row.getAs[Int](1), 0) }
 
-    val userRecsConfig = MongodbConfigBuilder(Map(Host -> mongoConf.hosts.split(";").toList, Database -> mongoConf.db, Collection -> USER_RECS_COLLECTION_NAME))
+    object RatingOrder extends Ordering[Row] {
+      def compare(x: Row, y: Row) = y.getAs[Float](model.getPredictionCol) compare x.getAs[Float](model.getPredictionCol)
+    }
+
+    val recommendations = model.transform(userRating)
+      .filter(col(model.getPredictionCol) > 0 && !col(model.getPredictionCol).isNaN )
+      .groupByKey(p => (p.getAs[Int](model.getUserCol)))
+      .mapGroups { case (userId, predictions) =>
+        val recommendations = predictions.toSeq.sorted(RatingOrder)
+          .take(MAX_RECOMMENDATIONS)
+          .map(p => Rec(p.getAs[Int](model.getItemCol), p.getAs[Float](model.getPredictionCol).toDouble))
+
+        UserRecommendation(userId, recommendations)
+      }
+
 
     mongoClient(mongoConf.db)(USER_RECS_COLLECTION_NAME).dropCollection()
 
-    sqlContext.createDataFrame(userRecs, StructType(userRecsStructure))
-      .saveToMongodb(userRecsConfig.build)
+    recommendations
+      .write
+      .option("uri", mongoConf.uri)
+      .option("collection", USER_RECS_COLLECTION_NAME)
+      .mode("overwrite")
+      .format("com.mongodb.spark.sql")
+      .save
 
     mongoClient(mongoConf.db)(USER_RECS_COLLECTION_NAME).createIndex(MongoDBObject("userId" -> 1))
   }
 
-  private def calculateProductRecs(maxRecs: Int, model: MatrixFactorizationModel, productsMap: Map[Int, String])(implicit _conf: SparkConf, mongoConf: MongoConfig, mongoClient: MongoClient): Unit = {
-    val sc = SparkContext.getOrCreate(_conf)
-    val sqlContext = SQLContext.getOrCreate(sc)
+  private def calculateProductRecs(maxRecs: Int, model: ALSModel, products: Dataset[Int])(implicit mongoConf: MongoConfig, mongoClient: MongoClient): Unit = {
+    import products.sqlContext.implicits._
+    import org.apache.spark.sql.functions._
 
-    val productsRecs = productsMap.toList.map { case (idInt, id) =>
-      val itemFactor = model.productFeatures.lookup(idInt).head
-      val itemVector = new DoubleMatrix(itemFactor)
-
-      val sims: RDD[(String, Double)] = model.productFeatures.map { case (currentIdInt, factor) =>
-        val currentId = productsMap(currentIdInt)
-
-        val factorVector = new DoubleMatrix(factor)
-        val sim = cosineSimilarity(factorVector, itemVector)
-
-        (currentId, sim)
-      }
-
-      val recs = sims.filter { case (currentId, sim) => currentId != id }
-        .top(maxRecs)(Ordering.by[(String, Double), Double] { case (currentId, sim) => sim })
-        .map { case (currentId, sim) => Row(currentId, sim) }.toList
-
-      Row(id, recs)
+    object RatingOrder extends Ordering[(Int, Int, Double)] {
+      def compare(x: (Int, Int, Double), y: (Int, Int, Double)) = y._3 compare x._3
     }
-    val productRecsRDD: RDD[Row] = sc.parallelize(productsRecs)
+
+    val recommendations = model.itemFactors.crossJoin(model.itemFactors)
+      .filter(r => r.getAs[Int](0) != r.getAs[Int](2))
+      .map { r =>
+        val idA = r.getAs[Int](0)
+        val idB = r.getAs[Int](2)
+        val featuresA = r.getAs[mutable.WrappedArray[Float]](1).map(_.toDouble).toArray
+        val featuresB = r.getAs[mutable.WrappedArray[Float]](3).map(_.toDouble).toArray
+
+        (idA, idB, cosineSimilarity(new DoubleMatrix(featuresA), new DoubleMatrix(featuresB)))
+      }
+      .filter(col("_3") > 0 && !col("_3").isNaN)
+      .groupByKey(p => p._1)
+      .mapGroups { case (productId, predictions) =>
+        val recommendations = predictions.toSeq.sorted(RatingOrder)
+          .take(MAX_RECOMMENDATIONS)
+          .map(p => Rec(p._2, p._3.toDouble))
+
+        ProductRecommendation(productId, recommendations)
+      }
+      .toDF
 
     mongoClient(mongoConf.db)(PRODUCT_RECS_COLLECTION_NAME).dropCollection()
 
-    val productRecsConfig = MongodbConfigBuilder(Map(Host -> mongoConf.hosts.split(";").toList, Database -> mongoConf.db, Collection -> PRODUCT_RECS_COLLECTION_NAME))
+    recommendations.write
+      .option("uri", mongoConf.uri)
+      .option("collection", PRODUCT_RECS_COLLECTION_NAME)
+      .mode("overwrite")
+      .format("com.mongodb.spark.sql")
+      .save
 
-    sqlContext.createDataFrame(productRecsRDD, StructType(productRecsStructure))
-      .saveToMongodb(productRecsConfig.build)
-
-    mongoClient(mongoConf.db)(PRODUCT_RECS_COLLECTION_NAME).createIndex(MongoDBObject("productId" -> 1))
+    mongoClient(mongoConf.db)(PRODUCT_RECS_COLLECTION_NAME).createIndex(MongoDBObject("productid" -> 1))
   }
 
   private def cosineSimilarity(vec1: DoubleMatrix, vec2: DoubleMatrix): Double = {
